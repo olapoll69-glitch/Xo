@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>Zizo XO Pro AI Memory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
+*{box-sizing:border-box}
+body{
+  margin:0;height:100vh;display:flex;justify-content:center;align-items:center;
+  background:radial-gradient(circle at top,#020617,#000);
+  font-family:'Orbitron',sans-serif;color:#fff;
+}
+.game{
+  background:rgba(15,23,42,.9);
+  padding:25px;border-radius:24px;text-align:center;
+  box-shadow:0 0 40px rgba(34,197,94,.25);
+}
+h1{margin:0 0 10px;color:#22c55e;letter-spacing:2px}
+.board{
+  display:grid;grid-template-columns:repeat(3,100px);
+  gap:14px;margin:20px 0;
+}
+.cell{
+  width:100px;height:100px;border-radius:20px;
+  background:linear-gradient(145deg,#020617,#1e293b);
+  display:flex;justify-content:center;align-items:center;
+  font-size:56px;cursor:pointer;transition:.2s;
+  box-shadow:inset 0 0 10px rgba(0,0,0,.7),0 0 15px rgba(0,0,0,.7);
+}
+.cell:hover{transform:scale(1.05);box-shadow:0 0 20px rgba(34,197,94,.6)}
+.cell.X{color:#22c55e;text-shadow:0 0 15px #22c55e}
+.cell.O{color:#38bdf8;text-shadow:0 0 15px #38bdf8}
+#status{margin-top:10px;font-size:18px;min-height:24px}
+button{
+  margin:8px;padding:10px 20px;font-size:14px;border:none;
+  border-radius:14px;background:linear-gradient(90deg,#22c55e,#16a34a);
+  color:#000;cursor:pointer;
+}
+.mode-btn{
+  background:linear-gradient(90deg,#38bdf8,#0ea5e9);
+}
+.win{animation:glow .8s infinite alternate}
+@keyframes glow{
+  from{box-shadow:0 0 15px #22c55e}
+  to{box-shadow:0 0 35px #22c55e}
+}
+</style>
+</head>
+<body>
+
+<div class="game">
+  <h1>🎮 ZIZO XO AI</h1>
+
+  <button class="mode-btn" onclick="setMode('pvp')">👥 لاعب ضد لاعب</button>
+  <button class="mode-btn" onclick="setMode('bot')">🤖 ضد الروبوت المتعلم</button>
+
+  <div class="board" id="board"></div>
+  <div id="status">اختار المود الأول</div>
+  <button onclick="resetGame()">🔄 إعادة اللعب</button>
+</div>
+
+<script>
+const board = document.getElementById("board");
+const status = document.getElementById("status");
+
+let cells = Array(9).fill("");
+let current = "X";
+let gameOver = false;
+let mode = null;
+let playerFirstMove = null;
+
+// ذاكرة الروبوت
+let memory = JSON.parse(localStorage.getItem("zizoMemory")) || {};
+
+const wins = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+function setMode(m){
+  mode = m;
+  resetGame();
+}
+
+function draw(){
+  board.innerHTML="";
+  cells.forEach((v,i)=>{
+    const c=document.createElement("div");
+    c.className="cell "+v;
+    c.textContent=v;
+    c.onclick=()=>play(i);
+    board.appendChild(c);
+  });
+}
+
+function play(i){
+  if(!mode){status.textContent="اختار المود الأول";return;}
+  if(cells[i]||gameOver) return;
+
+  // حفظ أول حركة ليك
+  if(mode==="bot" && current==="X" && playerFirstMove===null){
+    playerFirstMove=i;
+  }
+
+  cells[i]=current;
+
+  if(checkWin()){
+    status.textContent=`🏆 اللاعب ${current} فاز`;
+    highlight();
+    gameOver=true;
+
+    // لو انت كسبت الروبوت يحفظ حركتك الأولى
+    if(mode==="bot" && current==="X" && playerFirstMove!==null){
+      memory[playerFirstMove]=(memory[playerFirstMove]||0)+1;
+      localStorage.setItem("zizoMemory",JSON.stringify(memory));
+    }
+
+  }else if(cells.every(c=>c)){
+    status.textContent="😐 تعادل";
+    gameOver=true;
+  }else{
+    current=current==="X"?"O":"X";
+    status.textContent=`دور اللاعب: ${current}`;
+    if(mode==="bot" && current==="O" && !gameOver){
+      setTimeout(botMove,400);
+    }
+  }
+  draw();
+}
+
+function botMove(){
+
+  // يشوف أكتر حركة انت بتبدأ بيها
+  let mostPlayed = Object.keys(memory).reduce((a,b)=>
+    memory[a]>memory[b]?a:b, null);
+
+  if(mostPlayed!==null && cells[mostPlayed]===""){
+    play(parseInt(mostPlayed));
+    return;
+  }
+
+  let bestMove = getBestMove();
+  if(bestMove!==null){
+    play(bestMove);
+  }
+}
+
+function getBestMove(){
+  for(let w of wins){
+    let line=w.map(i=>cells[i]);
+    if(line.filter(v=>v==="O").length===2 && line.includes("")){
+      return w[line.indexOf("")];
+    }
+  }
+  for(let w of wins){
+    let line=w.map(i=>cells[i]);
+    if(line.filter(v=>v==="X").length===2 && line.includes("")){
+      return w[line.indexOf("")];
+    }
+  }
+  if(cells[4]==="") return 4;
+  let empty=cells.map((v,i)=>v===""?i:null).filter(v=>v!==null);
+  return empty[Math.floor(Math.random()*empty.length)];
+}
+
+function checkWin(){
+  return wins.some(w=>w.every(i=>cells[i]===current));
+}
+
+function highlight(){
+  wins.forEach(w=>{
+    if(w.every(i=>cells[i]===current)){
+      w.forEach(i=>board.children[i].classList.add("win"));
+    }
+  });
+}
+
+function resetGame(){
+  cells=Array(9).fill("");
+  current="X";
+  gameOver=false;
+  playerFirstMove=null;
+  status.textContent= mode==="bot"?
+  "دور اللاعب: X (أنت)":
+  "دور اللاعب: X";
+  draw();
+}
+
+draw();
+</script>
+
+</body>
+</html># Simple workflow for deploying static content to GitHub Pages
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Single deploy job since we're just deploying
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
